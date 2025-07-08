@@ -16,7 +16,7 @@ class Db_Connection_Manager:
     def __new__(singleton):
         if (singleton._instance == None):
             singleton._instance = super().__new__(singleton)
-            return singleton._instance
+        return singleton._instance
         
     async def init_pool(self):#passar para aenter e aexit
         if(self._pool is None):
