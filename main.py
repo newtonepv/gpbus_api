@@ -2,6 +2,7 @@ import asyncio
 from database import Db_Connection_Manager
 from asyncpg import Connection 
 import fastapi
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 
@@ -14,6 +15,14 @@ async def lifespan(app: fastapi.FastAPI):
     await db.close_pool()
 
 app = fastapi.FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  
+)
 
 #root, para debug
 @app.get("/busids")
