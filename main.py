@@ -50,18 +50,36 @@ async def listBusIds(request: fastapi.Request):
     return retuning
 
 @app.get("/udtBusLoc/")
-async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float):
+async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         try:
-            await c.execute("""UPDATE buslimeira 
-                                        SET latitude = $1, 
-                                            longitude = $2 
-                                        WHERE busid = $3;
-                                        """,latitude, longitude, busid)
-            retuning = {'status':'sucsess'}
+            #verify if the request comes from the true driver and not domebody trying to moove the bus
+            response = await c.execute("""SELECT id 
+                                FROM driverslimeira 
+                                WHERE id = $1 AND password = $2;
+                            """,idDriver, driverPassword)
+            if(response=="SELECT 0"):
+                #no need to handle this in the app, its just for security, in the app you can only make this request if you are logged
+                returning = fastapi.HTTPException(status_code=401,detail="Wrong bus driver password")
+            else:
+                #verify if the bus driver can drive this bus
+                response = await c.fetchval("""SELECT EXISTS (
+                                SELECT 1 
+                                FROM busdriverassignment 
+                                WHERE driverid = $1 AND busid = $2
+                            ) AS pode_dirigir;""",idDriver, busid)
+                if(response == False):
+                    returning = fastapi.HTTPException(status_code=401,detail="This bus driver cant drive this bus")
+                else:
+                    await c.execute("""UPDATE buslimeira 
+                                                SET latitude = $1, 
+                                                    longitude = $2 
+                                                WHERE busid = $3;
+                                                """,latitude, longitude, busid)
+                returning = {'status':'sucsess'}
         except Exception as e:
-            retuning = fastapi.HTTPException(status_code=500,detail=str(e))
-    return retuning
+            returning = fastapi.HTTPException(status_code=500,detail=str(e))
+    return returning
 
 def auxNextPosition(center_x:float, center_y:float, prev_x:float, prev_y:float):
     angle = math.atan2(prev_y-center_y, prev_x-center_x)
