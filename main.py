@@ -44,16 +44,23 @@ async def listBusIds(request: fastapi.Request):
         resultado = [linha['busid'] for linha in resultado]#passando para json
         return {'ids':str(resultado)}
     
+async def autenthicate_driver(c:Connection, idDriver: int, driverPassword: str)->bool:
+    response = await c.execute("""SELECT id 
+                            FROM driverslimeira 
+                            WHERE id = $1 AND password = $2;
+                        """,idDriver, driverPassword)
+    return response=="SELECT 1"
 
+@app.get("/atuthenticate/")
+async def authenticate(request: fastapi.Request, idDriver: int, driverPassword: str):
+    async for c in db.get_connection(request.client.host):
+        return {"looged": str(await autenthicate_driver(c,idDriver,driverPassword))}
+    
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         #verify if the request comes from the true driver and not domebody trying to moove the bus
-        response = await c.execute("""SELECT id 
-                            FROM driverslimeira 
-                            WHERE id = $1 AND password = $2;
-                        """,idDriver, driverPassword)
-        if(response=="SELECT 0"):
+        if(await autenthicate_driver(c,idDriver, driverPassword)==False):
             #no need to handle this in the app, its just for security, in the app you can only make this request if you are logged
             raise fastapi.HTTPException(status_code=401,detail="Wrong bus driver password")
         else:
