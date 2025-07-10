@@ -42,7 +42,6 @@ async def listBusIds(request: fastapi.Request):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         try:
             resultado = await c.fetch('SELECT busid FROM buslimeira')
-            await asyncio.sleep(4)
             resultado = [linha['busid'] for linha in resultado]#passando para json
             retuning = {'ids':str(resultado)}
         except Exception as e:
