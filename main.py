@@ -40,13 +40,10 @@ async def root(request: fastapi.Request):
 @app.get("/busids")
 async def listBusIds(request: fastapi.Request):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            resultado = await c.fetch('SELECT busid FROM buslimeira')
-            resultado = [linha['busid'] for linha in resultado]#passando para json
-            retuning = {'ids':str(resultado)}
-        except Exception as e:
-            retuning = fastapi.HTTPException(status_code=500,detail=str(e))
-    return retuning
+        resultado = await c.fetch('SELECT busid FROM buslimeira')
+        resultado = [linha['busid'] for linha in resultado]#passando para json
+        return {'ids':str(resultado)}
+    
 
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
@@ -124,20 +121,17 @@ async def makeBus200Moove(request: fastapi.Request):
 @app.get("/getBusLoc/")
 async def udtBusLoc(request: fastapi.Request,busid:int):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            resultado = await c.fetchrow("""SELECT latitude, longitude
-                                        FROM buslimeira
-                                        WHERE busid = $1;
-                                        """, busid)
-            if resultado:
-                retuning = {
-                    'latitude': resultado['latitude'],
-                    'longitude': resultado['longitude']
-                }
-            else:
-                retuning = {'error': 'Bus not found'}
-        except Exception as e:
-            retuning = fastapi.HTTPException(status_code=500,detail=str(e))
+        resultado = await c.fetchrow("""SELECT latitude, longitude
+                                    FROM buslimeira
+                                    WHERE busid = $1;
+                                    """, busid)
+        if resultado:
+            retuning = {
+                'latitude': resultado['latitude'],
+                'longitude': resultado['longitude']
+            }
+        else:
+            retuning = {'error': 'Bus not found'}
     return retuning
 if __name__ == "__main__":
     import uvicorn
