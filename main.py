@@ -54,7 +54,7 @@ async def autenthicate_driver(c:Connection, idDriver: int, driverPassword: str)-
 @app.get("/atuthenticate/")
 async def authenticate(request: fastapi.Request, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):
-        return {"looged": str(await autenthicate_driver(c,idDriver,driverPassword))}
+        return {"hasAccess": str(await autenthicate_driver(c,idDriver,driverPassword))}
     
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
