@@ -27,8 +27,10 @@ app.add_middleware(
 
 @app.middleware('http')
 async def check_server_overload(request: fastapi.Request, call_next: Callable[[fastapi.Request], Coroutine[Any, Any, fastapi.Response]]):
+    #implement api overload instead of just database overload (requests/second)
     return await call_next(request)
 
+#root, para debug
 @app.get('/')
 async def root(request: fastapi.Request):
     try:
@@ -36,15 +38,30 @@ async def root(request: fastapi.Request):
     except Exception as e:
         return {'status':'error'}
 
-#root, para debug
 @app.get("/busids")
-async def listBusIds(request: fastapi.Request):
+async def busids(request: fastapi.Request):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        resultado = await c.fetch('SELECT busid FROM buslimeira')
-        resultado = [linha['busid'] for linha in resultado]#passando para json
-        return {'ids':str(resultado)}
+        try:
+            resultado = await c.fetch('SELECT busid FROM buslimeira')
+            resultado = [linha['busid'] for linha in resultado]#passando para json
+            return {'ids':str(resultado)}
+        except Exception as e:
+            #no need to handle in the app
+            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
     
-async def autenthicate_driver(c:Connection, idDriver: int, driverPassword: str)->bool:
+@app.get("/getBusRoute/")
+async def getBusRoute(request: fastapi.Request, busid:int):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        try:
+            resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
+            resultado = [resultado[0]]#passando para json
+            print(str(resultado))
+            return {'route':str(resultado)}
+        except Exception as e:
+            #no need to handle in the app
+            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+    
+async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: str)->bool:
     response = await c.execute("""SELECT id 
                             FROM driverslimeira 
                             WHERE id = $1 AND password = $2;
@@ -54,13 +71,17 @@ async def autenthicate_driver(c:Connection, idDriver: int, driverPassword: str)-
 @app.get("/atuthenticate/")
 async def authenticate(request: fastapi.Request, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):
-        return {"hasAccess": str(await autenthicate_driver(c,idDriver,driverPassword))}
+        try:
+            return {"hasAccess": str(await autenthicate_driver_aux(c,idDriver,driverPassword))}
+        except Exception as e:
+            #no need to handle in the app
+            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
     
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         #verify if the request comes from the true driver and not domebody trying to moove the bus
-        if(await autenthicate_driver(c,idDriver, driverPassword)==False):
+        if(await autenthicate_driver_aux(c,idDriver, driverPassword)==False):
             #no need to handle this in the app, its just for security, in the app you can only make this request if you are logged
             raise fastapi.HTTPException(status_code=401,detail="Wrong bus driver password")
         else:

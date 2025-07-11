@@ -67,6 +67,7 @@ class Db_Connection_Manager:
             else:
                 if self._connections[client_ip] >= MAX_CONNECTIONS_FOR_IP:
                     self._num_active_connections-=1
+                    print("Too many connections for this IP")
                     raise fastapi.HTTPException(
                         status_code=429, 
                         detail="Too many connections for this IP"
