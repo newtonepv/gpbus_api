@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import math
 from typing import Callable, Coroutine, Any
-
+from bus200SimulatedStepsFile import bus200SimulatedSteps
 db = Db_Connection_Manager()
 #funcao parametro que define o que acontece antes e depois de criar a api
 @asynccontextmanager
@@ -104,14 +104,7 @@ async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitu
     print("returning.type=" +str(type(returning)))
     return returning
 
-def auxNextPosition(center_x:float, center_y:float, prev_x:float, prev_y:float):
-    angle = math.atan2(prev_y-center_y, prev_x-center_x)
-    radius = math.sqrt((prev_x - center_x)**2 + (prev_y - center_y)**2)
-    angle += math.radians(1)
-    x = radius * math.cos(angle)
-    y = radius * math.sin(angle)
-    new_pos =  (center_x + x, center_y + y)
-    return (center_x + x, center_y + y)
+
     
 
 isMoovingBus200:bool  = False
@@ -124,21 +117,19 @@ async def makeBus200Moove(request: fastapi.Request):
          if isMoovingBus200==True:
             return {"status": "error", "message": "Bus 200 is already moving. Please wait until the current operation completes."}
          isMoovingBus200=True
-    center=(41.375053,2.149719)
-    actual=(41.375053,2.149140)
-    cont_angle = 0
+    cont = 0
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         try:
-            while cont_angle<360:
+            while cont<len(bus200SimulatedSteps):
+                actual = bus200SimulatedSteps[cont]
                 print("loc "+ str(actual))
                 await c.execute("""UPDATE buslimeira 
                                             SET latitude = $1, 
                                                 longitude = $2 
                                             WHERE busid = $3;
                                             """,actual[0], actual[1], 200)
-                actual = auxNextPosition(center[0], center[1], actual[0],actual[1])
                 await asyncio.sleep(0.1) # 1angle/0.05sec 
-                cont_angle+=1
+                cont+=1
             retuning = {'status':'sucsess'}
         except Exception as e:
             retuning = fastapi.HTTPException(status_code=500,detail=str(e))
