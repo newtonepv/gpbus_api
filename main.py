@@ -60,7 +60,7 @@ async def getBusRoute(request: fastapi.Request, busid:int):
         except Exception as e:
             #no need to handle in the app
             raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
-    
+        
 async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: str)->bool:
     response = await c.execute("""SELECT id 
                             FROM driverslimeira 
@@ -68,14 +68,36 @@ async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: s
                         """,idDriver, driverPassword)
     return response=="SELECT 1"
 
-@app.get("/atuthenticate/")
-async def authenticate(request: fastapi.Request, idDriver: int, driverPassword: str):
+@app.get("/authenticateDriver/")
+async def authenticateDriver(request: fastapi.Request, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):
         try:
-            return {"hasAccess": str(await autenthicate_driver_aux(c,idDriver,driverPassword))}
+            respostaDoBd = str(await autenthicate_driver_aux(c,idDriver,driverPassword))
+            return {"hasAccess": respostaDoBd}
         except Exception as e:
             #no need to handle in the app
             raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        
+    
+async def autenthicate_passanger_aux(c:Connection, userName: str, driverPassword: str)->bool:
+    response = await c.execute("""SELECT username 
+                            FROM passanger 
+                            WHERE username = $1 AND password = $2;
+                        """,userName, driverPassword)
+    return response=="SELECT 1"
+
+@app.get("/authenticatePassanger/")
+async def authenticatePassanger(request: fastapi.Request, userName: str, driverPassword: str):
+    
+    async for c in db.get_connection(request.client.host):
+        try:
+            respostaDoBd = str(await autenthicate_passanger_aux(c,userName,driverPassword)); 
+            return {"hasAccess": respostaDoBd}
+        except Exception as e:
+            print("authenticatePassanger Exception")
+            #no need to handle in the app it is just so the api does not crash
+            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        
     
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
