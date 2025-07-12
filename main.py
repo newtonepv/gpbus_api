@@ -136,7 +136,7 @@ async def makeBus200Moove(request: fastapi.Request):
     global isMoovingBus200
     async with move_bus_lock:
          if isMoovingBus200==True:
-            return {"status": "error", "message": "Bus 200 is already moving. Please wait until the current operation completes."}
+            raise fastapi.HTTPException(status_code=409, detail="Bus 200 is already moving. Please wait until the current operation completes.")
          isMoovingBus200=True
 
     cont = 0
