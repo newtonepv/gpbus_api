@@ -1,6 +1,7 @@
 import asyncio
 from database import Db_Connection_Manager
-from asyncpg import Connection 
+from asyncpg import Connection
+import asyncpg 
 import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -41,25 +42,18 @@ async def root(request: fastapi.Request):
 @app.get("/busids")
 async def busids(request: fastapi.Request):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            resultado = await c.fetch('SELECT busid FROM buslimeira')
-            resultado = [linha['busid'] for linha in resultado]#passando para json
-            return {'ids':str(resultado)}
-        except Exception as e:
-            #no need to handle in the app
-            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        resultado = await c.fetch('SELECT busid FROM buslimeira')
+        resultado = [linha['busid'] for linha in resultado]#passando para json
+        return {'ids':str(resultado)}
     
 @app.get("/getBusRoute/")
 async def getBusRoute(request: fastapi.Request, busid:int):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
-            resultado = [resultado[0]]#passando para json
-            print(str(resultado))
-            return {'route':str(resultado)}
-        except Exception as e:
-            #no need to handle in the app
-            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
+        resultado = [resultado[0]]#passando para json
+        print(str(resultado))
+        return {'route':str(resultado)}
+        
         
 async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: str)->bool:
     response = await c.execute("""SELECT id 
@@ -71,12 +65,8 @@ async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: s
 @app.get("/authenticateDriver/")
 async def authenticateDriver(request: fastapi.Request, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):
-        try:
-            respostaDoBd = str(await autenthicate_driver_aux(c,idDriver,driverPassword))
-            return {"hasAccess": respostaDoBd}
-        except Exception as e:
-            #no need to handle in the app
-            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        respostaDoBd = str(await autenthicate_driver_aux(c,idDriver,driverPassword))
+        return {"hasAccess": respostaDoBd}
         
     
 async def autenthicate_passanger_aux(c:Connection, userName: str, driverPassword: str)->bool:
@@ -87,18 +77,26 @@ async def autenthicate_passanger_aux(c:Connection, userName: str, driverPassword
     return response=="SELECT 1"
 
 @app.get("/authenticatePassanger/")
-async def authenticatePassanger(request: fastapi.Request, userName: str, driverPassword: str):
+async def authenticatePassanger(request: fastapi.Request, userName: str, userPassword: str):
     
     async for c in db.get_connection(request.client.host):
-        try:
-            respostaDoBd = str(await autenthicate_passanger_aux(c,userName,driverPassword)); 
-            return {"hasAccess": respostaDoBd}
-        except Exception as e:
-            print("authenticatePassanger Exception")
-            #no need to handle in the app it is just so the api does not crash
-            raise fastapi.HTTPException(500,detail="Maybe the query is wrong")
+        respostaDoBd = str(await autenthicate_passanger_aux(c,userName,userPassword)); 
+        return {"hasAccess": respostaDoBd}
         
-    
+@app.get("/createPassanger/")
+async def createPassanger(request: fastapi.Request, userName: str, userPassword: str):
+    print("userName =" +userName + " userPassword = "+ userPassword)
+    async for c in db.get_connection(request.client.host):
+        try:
+            await c.execute("""INSERT INTO passanger
+                            VALUES ($1, $2)""", userName, userPassword)
+            
+            return {"status": "success"}
+
+        except asyncpg.exceptions.UniqueViolationError as e:
+            #in case the username already exists
+            raise fastapi.HTTPException(409,detail="This username already exists")
+      
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
@@ -134,30 +132,28 @@ move_bus_lock = asyncio.Lock()
 @app.get("/makeBus200Moove/")
 async def makeBus200Moove(request: fastapi.Request):
     #this functions mooves the bus 200 in circles arround plaza españa any bus driver can use it
+    
     global isMoovingBus200
     async with move_bus_lock:
          if isMoovingBus200==True:
             return {"status": "error", "message": "Bus 200 is already moving. Please wait until the current operation completes."}
          isMoovingBus200=True
+
     cont = 0
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            while cont<len(bus200SimulatedSteps):
-                actual = bus200SimulatedSteps[cont]
-                print("loc "+ str(actual))
-                await c.execute("""UPDATE buslimeira 
-                                            SET latitude = $1, 
-                                                longitude = $2 
-                                            WHERE busid = $3;
-                                            """,actual[0], actual[1], 200)
-                await asyncio.sleep(0.1) # 1angle/0.05sec 
-                cont+=1
-            retuning = {'status':'sucsess'}
-        except Exception as e:
-            retuning = fastapi.HTTPException(status_code=500,detail=str(e))
-        finally:
-            isMoovingBus200=False
-            return retuning
+        while cont<len(bus200SimulatedSteps):
+            actual = bus200SimulatedSteps[cont]
+            print("loc "+ str(actual))
+            await c.execute("""UPDATE buslimeira 
+                                        SET latitude = $1, 
+                                            longitude = $2 
+                                        WHERE busid = $3;
+                                        """,actual[0], actual[1], 200)
+            await asyncio.sleep(0.1) # 1angle/0.05sec 
+            cont+=1
+        retuning = {'status':'sucsess'}
+        isMoovingBus200=False
+        return retuning
 
 @app.get("/getBusLoc/")
 async def udtBusLoc(request: fastapi.Request,busid:int):
