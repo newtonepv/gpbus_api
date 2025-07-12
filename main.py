@@ -55,17 +55,17 @@ async def getBusRoute(request: fastapi.Request, busid:int):
         return {'route':str(resultado)}
         
         
-async def autenthicate_driver_aux(c:Connection, idDriver: int, driverPassword: str)->bool:
+async def autenthicate_driver_aux(c:Connection, driverId: int, driverPassword: str)->bool:
     response = await c.execute("""SELECT id 
                             FROM driverslimeira 
                             WHERE id = $1 AND password = $2;
-                        """,idDriver, driverPassword)
+                        """,driverId, driverPassword)
     return response=="SELECT 1"
 
 @app.get("/authenticateDriver/")
-async def authenticateDriver(request: fastapi.Request, idDriver: int, driverPassword: str):
+async def authenticateDriver(request: fastapi.Request, driverId: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):
-        respostaDoBd = str(await autenthicate_driver_aux(c,idDriver,driverPassword))
+        respostaDoBd = str(await autenthicate_driver_aux(c,driverId,driverPassword))
         return {"hasAccess": respostaDoBd}
         
     
