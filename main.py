@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import math
 from typing import Callable, Coroutine, Any
 from bus200SimulatedStepsFile import bus200SimulatedSteps
+from datetime import datetime
 db = Db_Connection_Manager()
 #funcao parametro que define o que acontece antes e depois de criar a api
 @asynccontextmanager
@@ -175,14 +176,53 @@ async def getBusRoute(request: fastapi.Request, busid:int):
         resultado = [resultado[0]]#passando para json
         return {'route':str(resultado)}
     
+def count_likes_aux(c_likes:list[asyncpg.Record]):
+    n_likes:int = 0
+    n_dislikes:int = 0
+    for l in c_likes:
+        if bool(l[0]):
+            n_dislikes+=1
+        else:
+            n_likes+=1
+    return n_likes,n_dislikes
+
 @app.get("/getBusComments/")
 async def getBusComments(request: fastapi.Request, busid:int):
+    print("getBusComments busid"+str(busid))
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        resultado = await c.fetch('SELECT (comment_id, comment_content, stars, user_name) FROM comments WHERE bus_id=$1',busid)
-    return {'busComments':resultado}
+        bus_comments = await c.fetch('SELECT (comment_id, comment_content, stars, user_name, comment_time) FROM comments WHERE bus_id=$1',busid)
+        #using a dictionary instead of creating a class
+        dict_comments_list:list[dict] = []
+
+        #initialize dict
+        for comment in bus_comments:
+            new_comment = dict()
+            new_comment['id'] = int(comment[0][0])
+            new_comment['message'] = str(comment[0][1])
+            new_comment['stars'] = int(comment[0][2])
+            new_comment['userName'] = str(comment[0][3])
+            new_comment['date'] = datetime.fromisoformat(str(comment[0][4]))
+            dict_comments_list.append(new_comment)
+
+
+        for dict_comment in dict_comments_list:
+            id:int = dict_comment['id']
+            #searching for the likes and dislikes
+            c_likes= await c.fetch('SELECT (is_dislike) FROM likes WHERE comment_id=$1',id)
+            dict_comment['likes'], dict_comment['dislikes'] = count_likes_aux(c_likes)
+
+        return dict_comments_list
+
+@app.get("/likeComment/")
+async def likeComment(request: fastapi.Request, commentId:int, userName:str, isDislike:bool):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        try:
+            await c.execute('INSERT INTO likes (user_name, comment_id, is_dislike) VALUES ($1, $2, $3)',userName,commentId,isDislike)
+        except asyncpg.exceptions.UniqueViolationError as e:
+            await c.execute('UPDATE likes SET is_dislike=$1 WHERE comment_id=$2 AND user_name=$3',isDislike,commentId,userName)
 
 @app.get("/addBusComment/")
-async def addBusComment(request: fastapi.Request, busid:int, userName:str, userPassword:str, comment:str, stars:int,):
+async def addBusComment(request: fastapi.Request, busid:int, userName:str, userPassword:str, comment:str, stars:int):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         hasAccess = await autenthicate_passanger_aux(c,userName,userPassword)
 
@@ -190,7 +230,7 @@ async def addBusComment(request: fastapi.Request, busid:int, userName:str, userP
             raise fastapi.HTTPException(status_code=401, detail="You are not logged")
         else:
             try:
-                await c.execute('INSERT INTO comments (comment_content, stars, user_name, bus_id) VALUES ($1, $2, $3, $4)',comment,stars,userName,busid)
+                await c.execute('INSERT INTO comments (comment_content, stars, user_name, bus_id) VALUES ($1, $2, $3, $4, NOW())',comment,stars,userName,busid)
                 return {'status':"success"}
             #no need to handle thoose in the app, they should not happen there
             except asyncpg.exceptions.ForeignKeyViolationError as e:
