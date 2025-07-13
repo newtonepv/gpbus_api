@@ -51,7 +51,6 @@ async def getBusRoute(request: fastapi.Request, busid:int):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
         resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
         resultado = [resultado[0]]#passando para json
-        print(str(resultado))
         return {'route':str(resultado)}
         
         
@@ -139,11 +138,16 @@ async def makeBus200Moove(request: fastapi.Request):
             raise fastapi.HTTPException(status_code=409, detail="Bus 200 is already moving. Please wait until the current operation completes.")
          isMoovingBus200=True
 
-    cont = 0
-    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+    #apenas uma, mas é pra usar o yield no async with
+    asyncio.create_task(makeBus200MooveCoroutine(request)) 
+    retuning = {'status':'sucsess'}
+    return retuning
+
+async def makeBus200MooveCoroutine(request: fastapi.Request):
+    async for c in db.get_connection(request.client.host):
+        cont = 0
         while cont<len(bus200SimulatedSteps):
             actual = bus200SimulatedSteps[cont]
-            print("loc "+ str(actual))
             await c.execute("""UPDATE buslimeira 
                                         SET latitude = $1, 
                                             longitude = $2 
@@ -151,9 +155,8 @@ async def makeBus200Moove(request: fastapi.Request):
                                         """,actual[0], actual[1], 200)
             await asyncio.sleep(0.1) # 1angle/0.05sec 
             cont+=1
-        retuning = {'status':'sucsess'}
+        global isMoovingBus200
         isMoovingBus200=False
-        return retuning
 
 @app.get("/getBusLoc/")
 async def udtBusLoc(request: fastapi.Request,busid:int):
