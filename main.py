@@ -46,12 +46,6 @@ async def busids(request: fastapi.Request):
         resultado = [linha['busid'] for linha in resultado]#passando para json
         return {'ids':str(resultado)}
     
-@app.get("/getBusRoute/")
-async def getBusRoute(request: fastapi.Request, busid:int):
-    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
-        resultado = [resultado[0]]#passando para json
-        return {'route':str(resultado)}
         
         
 async def autenthicate_driver_aux(c:Connection, driverId: int, driverPassword: str)->bool:
@@ -66,36 +60,7 @@ async def authenticateDriver(request: fastapi.Request, driverId: int, driverPass
     async for c in db.get_connection(request.client.host):
         respostaDoBd = str(await autenthicate_driver_aux(c,driverId,driverPassword))
         return {"hasAccess": respostaDoBd}
-        
-    
-async def autenthicate_passanger_aux(c:Connection, userName: str, driverPassword: str)->bool:
-    response = await c.execute("""SELECT username 
-                            FROM passanger 
-                            WHERE username = $1 AND password = $2;
-                        """,userName, driverPassword)
-    return response=="SELECT 1"
 
-@app.get("/authenticatePassanger/")
-async def authenticatePassanger(request: fastapi.Request, userName: str, userPassword: str):
-    
-    async for c in db.get_connection(request.client.host):
-        respostaDoBd = str(await autenthicate_passanger_aux(c,userName,userPassword)); 
-        return {"hasAccess": respostaDoBd}
-        
-@app.get("/createPassanger/")
-async def createPassanger(request: fastapi.Request, userName: str, userPassword: str):
-    print("userName =" +userName + " userPassword = "+ userPassword)
-    async for c in db.get_connection(request.client.host):
-        try:
-            await c.execute("""INSERT INTO passanger
-                            VALUES ($1, $2)""", userName, userPassword)
-            
-            return {"status": "success"}
-
-        except asyncpg.exceptions.UniqueViolationError as e:
-            #in case the username already exists
-            raise fastapi.HTTPException(409,detail="This username already exists")
-      
 @app.get("/udtBusLoc/")
 async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitude: float, idDriver: int, driverPassword: str):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
@@ -123,6 +88,35 @@ async def udtBusLoc(request: fastapi.Request, busid:int,latitude: float, longitu
     print("returning.type=" +str(type(returning)))
     return returning
 
+    
+async def autenthicate_passanger_aux(c:Connection, userName: str, userPassword: str)->bool:
+    response = await c.execute("""SELECT username 
+                            FROM passanger 
+                            WHERE username = $1 AND password = $2;
+                        """,userName, userPassword)
+    return response=="SELECT 1"
+
+@app.get("/authenticatePassanger/")
+async def authenticatePassanger(request: fastapi.Request, userName: str, userPassword: str):
+    
+    async for c in db.get_connection(request.client.host):
+        respostaDoBd = str(await autenthicate_passanger_aux(c,userName,userPassword)); 
+        return {"hasAccess": respostaDoBd}
+        
+@app.get("/createPassanger/")
+async def createPassanger(request: fastapi.Request, userName: str, userPassword: str):
+    print("userName =" +userName + " userPassword = "+ userPassword)
+    async for c in db.get_connection(request.client.host):
+        try:
+            await c.execute("""INSERT INTO passanger
+                            VALUES ($1, $2)""", userName, userPassword)
+            
+            return {"status": "success"}
+
+        except asyncpg.exceptions.UniqueViolationError as e:
+            #in case the username already exists
+            raise fastapi.HTTPException(409,detail="This username already exists")
+      
 
     
 
@@ -173,6 +167,37 @@ async def udtBusLoc(request: fastapi.Request,busid:int):
         else:
             retuning = {'error': 'Bus not found'}
     return retuning
+
+@app.get("/getBusRoute/")
+async def getBusRoute(request: fastapi.Request, busid:int):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        resultado = await c.fetchrow('SELECT route FROM buslimeira WHERE busid=$1',busid)
+        resultado = [resultado[0]]#passando para json
+        return {'route':str(resultado)}
+    
+@app.get("/getBusComments/")
+async def getBusComments(request: fastapi.Request, busid:int):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        resultado = await c.fetch('SELECT (comment_id, comment_content, stars, user_name) FROM comments WHERE bus_id=$1',busid)
+    return {'busComments':resultado}
+
+@app.get("/addBusComment/")
+async def addBusComment(request: fastapi.Request, busid:int, userName:str, userPassword:str, comment:str, stars:int,):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        hasAccess = await autenthicate_passanger_aux(c,userName,userPassword)
+
+        if(hasAccess==False):
+            raise fastapi.HTTPException(status_code=401, detail="You are not logged")
+        else:
+            try:
+                await c.execute('INSERT INTO comments (comment_content, stars, user_name, bus_id) VALUES ($1, $2, $3, $4)',comment,stars,userName,busid)
+                return {'status':"success"}
+            #no need to handle thoose in the app, they should not happen there
+            except asyncpg.exceptions.ForeignKeyViolationError as e:
+                return {'status':'error', 'error_message':str(e)}
+            except asyncpg.exceptions.CheckViolationError as e:
+                return {'status':'error', 'error_message':str(e)}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
