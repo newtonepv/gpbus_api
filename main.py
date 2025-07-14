@@ -214,12 +214,16 @@ async def getBusComments(request: fastapi.Request, busid:int):
         return dict_comments_list
 
 @app.get("/likeComment/")
-async def likeComment(request: fastapi.Request, commentId:int, userName:str, isDislike:bool):
+async def likeComment(request: fastapi.Request, commentId:int, userName:str, interactionCode:int):
     async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
-        try:
-            await c.execute('INSERT INTO likes (user_name, comment_id, is_dislike) VALUES ($1, $2, $3)',userName,commentId,isDislike)
-        except asyncpg.exceptions.UniqueViolationError as e:
-            await c.execute('UPDATE likes SET is_dislike=$1 WHERE comment_id=$2 AND user_name=$3',isDislike,commentId,userName)
+        if(interactionCode!=0):
+            isDislike=(interactionCode==-1)
+            try:
+                await c.execute('INSERT INTO likes (user_name, comment_id, is_dislike) VALUES ($1, $2, $3)',userName,commentId,isDislike)
+            except asyncpg.exceptions.UniqueViolationError as e:
+                await c.execute('UPDATE likes SET is_dislike=$1 WHERE comment_id=$2 AND user_name=$3',isDislike,commentId,userName)
+        else:
+            await c.execute('DELETE from likes WHERE comment_id=$1 AND user_name=$2', commentId,userName)
 
 @app.get("/addBusComment/")
 async def addBusComment(request: fastapi.Request, busid:int, userName:str, userPassword:str, comment:str, stars:int):
@@ -230,14 +234,39 @@ async def addBusComment(request: fastapi.Request, busid:int, userName:str, userP
             raise fastapi.HTTPException(status_code=401, detail="You are not logged")
         else:
             try:
-                await c.execute('INSERT INTO comments (comment_content, stars, user_name, bus_id) VALUES ($1, $2, $3, $4, NOW())',comment,stars,userName,busid)
+                await c.execute('INSERT INTO comments (comment_content, stars, user_name, bus_id, comment_time) VALUES ($1, $2, $3, $4, NOW())',comment,stars,userName,busid)
                 return {'status':"success"}
             #no need to handle thoose in the app, they should not happen there
             except asyncpg.exceptions.ForeignKeyViolationError as e:
                 return {'status':'error', 'error_message':str(e)}
             except asyncpg.exceptions.CheckViolationError as e:
                 return {'status':'error', 'error_message':str(e)}
-
+            
+@app.get("/checkIfUserLikedComment/")
+async def checkIfUserLikedComment(request: fastapi.Request, commentId:int, userName:str):
+    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+        result = await c.fetchrow("""SELECT 
+                        CASE 
+                            WHEN EXISTS (
+                                SELECT 1 
+                                FROM likes 
+                                WHERE user_name = $1
+                                AND comment_id = $2
+                            ) THEN (
+                                SELECT is_dislike 
+                                FROM likes 
+                                WHERE user_name = $1 
+                                AND comment_id = $2
+                            )
+                            ELSE NULL
+                        END AS is_dislike,
+                        EXISTS (
+                            SELECT 1 
+                            FROM likes 
+                            WHERE user_name = $1 
+                            AND comment_id = $2
+                        ) AS exists_like;""",userName,commentId)
+        return result
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
