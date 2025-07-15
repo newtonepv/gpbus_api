@@ -48,4 +48,4 @@ Check the [python_requisites.txt](#https://github.com/newtonepv/gpbus_api/blob/m
   ```bash
   python main.py
   ```
-After following thoose steps, your api should already be running at: <b></b>
+After following thoose steps, your api should already be running at: <b>http://0.0.0.0:8000</b>
