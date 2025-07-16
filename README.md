@@ -5,8 +5,8 @@
 </p>
 
 ## Description
-This is an getaway api for the two mobile apps in the repository [gpbus mobile](https://github.com/newtonepv/gpbus_mobile).
-This api intermediates the communication between those apps and the GPBus postgreSQL database.
+This is an gateway api for the two mobile apps in the repository [gpbus mobile](https://github.com/newtonepv/gpbus_mobile).
+This api intermediates the communication between these apps and the GPBus postgreSQL database.
 
 <hr>
 
@@ -25,12 +25,12 @@ This api intermediates the communication between those apps and the GPBus postgr
 <hr>
 
 ## Pending Features
-- Improving securtity.
+- Improving security.
 
 <hr>
 
 ## Hosting steps
-### Pre-requisites
+### Prerequisites
 Check the [python_requisites.txt](#https://github.com/newtonepv/gpbus_api/blob/main/python_requirements.txt) file
 
 ### Hosting Steps
