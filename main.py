@@ -244,7 +244,7 @@ async def addBusComment(request: fastapi.Request, busid:int, userName:str, userP
             
 @app.get("/checkIfUserLikedComment/")
 async def checkIfUserLikedComment(request: fastapi.Request, commentId:int, userName:str):
-    async for c in db.get_connection(request.client.host):#apenas uma, mas é pra usar o yield no async with
+    async for c in db.get_connection(request.client.host):#apenas uma connection, mas é pra usar o yield no async with
         result = await c.fetchrow("""SELECT 
                         CASE 
                             WHEN EXISTS (
@@ -266,7 +266,111 @@ async def checkIfUserLikedComment(request: fastapi.Request, commentId:int, userN
                             WHERE user_name = $1 
                             AND comment_id = $2
                         ) AS exists_like;""",userName,commentId)
-        return result
+        return result #retorna duas colunas, uma informando se tem uma reação, e outra informando se é um dislike
+
+@app.get("/createAlarm/")
+async def createAlarm(request: fastapi.Request, username: str, password: str, busid: int, start_time: str, end_time: str, c_latitude: float, c_longitude: float, c_radius: float):
+    formato = "%H:%M:%S"
+    s = None  # late
+    e = None  # late
+    
+    # Validação de horário
+    try:
+        s = datetime.strptime(start_time, formato)
+        e = datetime.strptime(end_time, formato)
+        if(s > e):
+            raise fastapi.HTTPException(status_code=400, detail="hora inválida")
+    except ValueError as e:
+        raise fastapi.HTTPException(status_code=400, detail="hora inválida")
+    
+    async for c in db.get_connection(request.client.host):
+        try:
+            
+            user_check = await c.fetchrow("""
+                SELECT username FROM passanger 
+                WHERE username = $1 AND password = $2;
+                """, username, password)
+            
+            if not user_check:
+                raise fastapi.HTTPException(status_code=401, detail="Credenciais inválidas")
+            
+            await c.execute("""
+                INSERT INTO alarms (username, busid, start_time, end_time, c_latitude, c_longitude, c_radius)
+                VALUES ($1,$2,$3,$4,$5,$6,$7);
+                """, username, busid, s, e, c_latitude, c_longitude, c_radius)
+            
+            return {'status': 'success', 'message': 'Alarme criado com sucesso'}
+            
+        except asyncpg.exceptions.ForeignKeyViolationError as e:
+            return {'status': 'error', 'error_message': str(e)}
+        except asyncpg.exceptions.CheckViolationError as e:
+            return {'status': 'error', 'error_message': str(e)}
+
+
+@app.get("/getAlarms/")
+async def getAlarms(request: fastapi.Request, username: str):
+    async for c in db.get_connection(request.client.host):
+        try:
+            result = await c.fetch("""
+                SELECT alarm_id, username, busid, start_time, end_time, c_latitude, c_longitude, c_radius
+                FROM alarms 
+                WHERE username = $1
+                ORDER BY start_time;
+                """, username)
+            
+            # Convert the result to a list of dictionaries for JSON response
+            alarms = []
+            for row in result:
+                alarm = {
+                    'alarm_id': row['alarm_id'],
+                    'username': row['username'],
+                    'busid': row['busid'],
+                    'start_time': row['start_time'].strftime("%H:%M:%S"),
+                    'end_time': row['end_time'].strftime("%H:%M:%S"),
+                    'c_latitude': row['c_latitude'],
+                    'c_longitude': row['c_longitude'],
+                    'c_radius': row['c_radius']
+                }
+                alarms.append(alarm)
+            
+            return {'status': 'success', 'alarms': alarms}
+            
+        except asyncpg.exceptions.PostgresError as e:
+            return {'status': 'error', 'error_message': str(e)}
+        except Exception as e:
+            return {'status': 'error', 'error_message': f'Unexpected error: {str(e)}'}
+
+
+@app.get("/deleteAlarm/")
+async def deleteAlarm(request: fastapi.Request, username: str, password: str, alarm_id: int):
+    async for c in db.get_connection(request.client.host):
+        user_check = await c.fetchrow("""
+            SELECT username FROM passanger 
+            WHERE username = $1 AND password = $2;
+            """, username, password)
+        
+        if not user_check:
+            raise fastapi.HTTPException(status_code=401, detail="Usuário inválidas")
+        
+        alarm_check = await c.fetchrow("""
+            SELECT alarm_id FROM alarms 
+            WHERE alarm_id = $1 AND username = $2;
+            """, alarm_id, username)
+        
+        if not alarm_check:
+            raise fastapi.HTTPException(status_code=404, detail="Alarme não encontrado ou não pertence ao usuário")
+        
+        result = await c.execute("""
+            DELETE FROM alarms 
+            WHERE alarm_id = $1 AND username = $2;
+            """, alarm_id, username)
+        
+        if result == "DELETE 0":
+            return {'status': 'error', 'error_message': 'Nenhum alarme foi removido'}
+        return {'status': 'success', 'message': 'Alarme removido com sucesso'}
+            
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -10,7 +10,6 @@ MAX_CONNECTIONS_FOR_IP = 4
 
 load_dotenv()
 db_url = os.getenv("DATABASE_URL")
-
 class Db_Connection_Manager:
     _instance = None
     _pool: asyncpg.Pool = None
