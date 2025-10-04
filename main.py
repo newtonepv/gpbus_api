@@ -274,7 +274,6 @@ async def createAlarm(request: fastapi.Request, username: str, password: str, bu
     s = None  # late
     e = None  # late
     
-    # Validação de horário
     try:
         s = datetime.strptime(start_time, formato)
         e = datetime.strptime(end_time, formato)
@@ -344,12 +343,12 @@ async def getAlarms(request: fastapi.Request, username: str):
 @app.get("/deleteAlarm/")
 async def deleteAlarm(request: fastapi.Request, username: str, password: str, alarm_id: int):
     async for c in db.get_connection(request.client.host):
-        user_check = await c.fetchrow("""
+        user_auth = await c.fetchrow("""
             SELECT username FROM passanger 
             WHERE username = $1 AND password = $2;
             """, username, password)
         
-        if not user_check:
+        if not user_auth:
             raise fastapi.HTTPException(status_code=401, detail="Usuário inválidas")
         
         alarm_check = await c.fetchrow("""
